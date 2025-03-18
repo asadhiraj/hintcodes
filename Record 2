@@ -1,0 +1,151 @@
+<template>
+  <div>
+    <!-- Record Button -->
+    <v-btn color="primary" @click="recorderDialog = true">
+      <v-icon left>mdi-microphone</v-icon>
+      Record Audio
+    </v-btn>
+
+    <!-- Recording Dialog -->
+    <v-dialog v-model="recorderDialog" max-width="600" persistent>
+      <v-card>
+        <v-card-title>
+          Audio Recorder
+          <v-spacer></v-spacer>
+          <v-btn icon @click="closeDialog">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+
+        <v-card-text>
+          <!-- Recorder Component -->
+          <vue-audio-recorder
+            :show-download-button="false"
+            :show-upload-button="false"
+            @stream="onStream"
+            @recording="onRecording"
+            @recorded="onRecorded"
+          >
+            <template v-slot:actions="{ start, pause, stop, isRecording, isPaused }">
+              <div class="text-center">
+                <v-btn 
+                  color="green" 
+                  @click="start"
+                  :disabled="isRecording && !isPaused"
+                >
+                  <v-icon left>mdi-record</v-icon>
+                  {{ isRecording ? 'Restart' : 'Start' }}
+                </v-btn>
+
+                <v-btn 
+                  color="orange" 
+                  @click="pause"
+                  :disabled="!isRecording || isPaused"
+                  class="ml-2"
+                >
+                  <v-icon left>mdi-pause</v-icon>
+                  Pause
+                </v-btn>
+
+                <v-btn 
+                  color="red" 
+                  @click="stop"
+                  :disabled="!isRecording"
+                  class="ml-2"
+                >
+                  <v-icon left>mdi-stop</v-icon>
+                  Stop
+                </v-btn>
+              </div>
+            </template>
+          </vue-audio-recorder>
+
+          <!-- Preview & Controls -->
+          <div v-if="audioUrl" class="mt-4">
+            <audio controls :src="audioUrl" class="mb-4"></audio>
+            <div class="text-center">
+              <v-btn color="success" @click="downloadAudio" class="mr-2">
+                <v-icon left>mdi-download</v-icon>
+                Download
+              </v-btn>
+              <v-btn color="primary" @click="uploadAudio">
+                <v-icon left>mdi-upload</v-icon>
+                Upload
+              </v-btn>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+  </div>
+</template>
+
+<script>
+import VueAudioRecorder from 'vue-audio-recorder'
+
+export default {
+  components: {
+    VueAudioRecorder
+  },
+
+  data() {
+    return {
+      recorderDialog: false,
+      audioBlob: null,
+      audioUrl: null,
+      mediaStream: null
+    }
+  },
+
+  methods: {
+    onStream(stream) {
+      this.mediaStream = stream
+    },
+
+    onRecording(blob) {
+      this.audioBlob = blob
+    },
+
+    onRecorded(blob) {
+      this.audioUrl = URL.createObjectURL(blob)
+    },
+
+    downloadAudio() {
+      const link = document.createElement('a')
+      link.href = this.audioUrl
+      link.download = `recording-${Date.now()}.webm`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    },
+
+    uploadAudio() {
+      const formData = new FormData()
+      formData.append('audio', this.audioBlob, 'recording.webm')
+      
+      // Implement your upload logic
+      // Example: this.$axios.post('/api/upload', formData)
+      this.closeDialog()
+    },
+
+    closeDialog() {
+      this.recorderDialog = false
+      this.audioBlob = null
+      this.audioUrl = null
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach(track => track.stop())
+      }
+    }
+  }
+}
+</script>
+
+<style scoped>
+audio {
+  width: 100%;
+  margin: 20px 0;
+}
+</style>
+
+
+
