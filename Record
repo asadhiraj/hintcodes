@@ -1,0 +1,301 @@
+<template>
+  <div>
+    <!-- Add Record Button above the data-table -->
+    <v-btn color="primary" @click="openRecorderDialog">
+      <v-icon left>mdi-microphone</v-icon>
+      Record New Audio
+    </v-btn>
+
+    <!-- Recorder Dialog -->
+    <v-dialog v-model="recorderDialog" max-width="600" persistent>
+      <v-card>
+        <v-card-title class="headline">
+          Audio Recorder
+          <v-spacer></v-spacer>
+          <v-btn icon @click="closeRecorderDialog">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+
+        <v-card-text>
+          <!-- Recording Status -->
+          <div class="text-center mb-4">
+            <v-chip :color="recordingStatusColor" dark>
+              {{ recordingStatusText }}
+            </v-chip>
+            <div class="mt-2">Duration: {{ formattedDuration }}</div>
+          </div>
+
+          <!-- Waveform Visualization -->
+          <v-progress-linear
+            v-if="isRecording"
+            :value="recordingProgress"
+            height="20"
+            color="primary"
+            striped
+          ></v-progress-linear>
+
+          <!-- Controls -->
+          <div class="text-center mt-4">
+            <v-btn 
+              v-if="!isRecording"
+              color="green" 
+              dark 
+              @click="startRecording"
+              :disabled="isRecording"
+            >
+              <v-icon left>mdi-record</v-icon>
+              Start
+            </v-btn>
+
+            <v-btn 
+              v-if="isRecording && !isPaused"
+              color="orange" 
+              dark 
+              @click="pauseRecording"
+              class="ml-2"
+            >
+              <v-icon left>mdi-pause</v-icon>
+              Pause
+            </v-btn>
+
+            <v-btn 
+              v-if="isRecording && isPaused"
+              color="blue" 
+              dark 
+              @click="resumeRecording"
+              class="ml-2"
+            >
+              <v-icon left>mdi-play</v-icon>
+              Resume
+            </v-btn>
+
+            <v-btn 
+              color="red" 
+              dark 
+              @click="stopRecording"
+              class="ml-2"
+              :disabled="!isRecording"
+            >
+              <v-icon left>mdi-stop</v-icon>
+              Stop
+            </v-btn>
+          </div>
+
+          <!-- Preview & Download -->
+          <div v-if="audioUrl" class="mt-6">
+            <audio controls :src="audioUrl" class="mb-4"></audio>
+            <div class="text-center">
+              <v-btn color="success" @click="downloadAudio" class="mr-2">
+                <v-icon left>mdi-download</v-icon>
+                Download
+              </v-btn>
+              <v-btn color="primary" @click="uploadAudio">
+                <v-icon left>mdi-upload</v-icon>
+                Upload
+              </v-btn>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+  </div>
+</template>
+
+<script>
+import { VueVoiceRecorder } from 'vue-voice-recorder'
+
+export default {
+  components: {
+    VueVoiceRecorder
+  },
+
+  data() {
+    return {
+      recorderDialog: false,
+      isRecording: false,
+      isPaused: false,
+      audioBlob: null,
+      audioUrl: null,
+      mediaRecorder: null,
+      audioChunks: [],
+      startTime: null,
+      duration: 0,
+      timerInterval: null
+    }
+  },
+
+  computed: {
+    recordingStatusText() {
+      if (this.isPaused) return 'Paused'
+      return this.isRecording ? 'Recording' : 'Ready to Record'
+    },
+    recordingStatusColor() {
+      if (this.isPaused) return 'orange'
+      return this.isRecording ? 'red' : 'grey'
+    },
+    formattedDuration() {
+      const minutes = Math.floor(this.duration / 60)
+      const seconds = this.duration % 60
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`
+    },
+    recordingProgress() {
+      return Math.min((this.duration / 60) * 100, 100) // Max 1 minute for visualization
+    }
+  },
+
+  methods: {
+    openRecorderDialog() {
+      this.recorderDialog = true
+      this.resetRecorder()
+    },
+
+    closeRecorderDialog() {
+      this.recorderDialog = false
+      this.resetRecorder()
+    },
+
+    async startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        this.mediaRecorder = new MediaRecorder(stream)
+        
+        this.mediaRecorder.ondataavailable = event => {
+          this.audioChunks.push(event.data)
+        }
+
+        this.mediaRecorder.onstop = () => {
+          this.audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' })
+          this.audioUrl = URL.createObjectURL(this.audioBlob)
+          stream.getTracks().forEach(track => track.stop())
+        }
+
+        this.mediaRecorder.start()
+        this.isRecording = true
+        this.startTimer()
+      } catch (error) {
+        console.error('Error accessing microphone:', error)
+        this.$emit('error', 'Microphone access denied')
+      }
+    },
+
+    pauseRecording() {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.pause()
+        this.isPaused = true
+        this.stopTimer()
+      }
+    },
+
+    resumeRecording() {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+        this.mediaRecorder.resume()
+        this.isPaused = false
+        this.startTimer()
+      }
+    },
+
+    stopRecording() {
+      if (this.mediaRecorder) {
+        this.mediaRecorder.stop()
+        this.isRecording = false
+        this.isPaused = false
+        this.stopTimer()
+      }
+    },
+
+    startTimer() {
+      this.startTime = Date.now()
+      this.timerInterval = setInterval(() => {
+        this.duration = Math.floor((Date.now() - this.startTime) / 1000)
+      }, 1000)
+    },
+
+    stopTimer() {
+      clearInterval(this.timerInterval)
+      this.timerInterval = null
+    },
+
+    downloadAudio() {
+      if (!this.audioBlob) return
+      
+      const link = document.createElement('a')
+      link.href = this.audioUrl
+      link.download = `recording-${new Date().toISOString()}.wav`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    },
+
+    uploadAudio() {
+      if (!this.audioBlob) return
+      
+      // Implement your upload logic here
+      const formData = new FormData()
+      formData.append('audio', this.audioBlob, 'recording.wav')
+      
+      // Example: axios.post('/api/upload', formData)
+      this.$emit('upload', formData)
+      this.closeRecorderDialog()
+    },
+
+    resetRecorder() {
+      this.isRecording = false
+      this.isPaused = false
+      this.audioBlob = null
+      this.audioUrl = null
+      this.audioChunks = []
+      this.duration = 0
+      this.stopTimer()
+      
+      if (this.mediaRecorder) {
+        this.mediaRecorder.stream?.getTracks().forEach(track => track.stop())
+      }
+    }
+  },
+
+  beforeDestroy() {
+    this.resetRecorder()
+  }
+}
+</script>
+
+<style scoped>
+audio {
+  width: 100%;
+  margin: 20px 0;
+}
+
+.v-chip {
+  transition: background-color 0.3s ease;
+}
+</style>
+
+
+
+
+<template>
+  <div>
+    <audio-recorder @upload="handleAudioUpload" />
+    <v-data-table ... />
+  </div>
+</template>
+
+<script>
+import AudioRecorder from './AudioRecorder.vue'
+
+export default {
+  components: {
+    AudioRecorder
+  },
+  methods: {
+    handleAudioUpload(formData) {
+      // Implement your upload logic
+      axios.post('/api/audios', formData)
+        .then(response => {
+          this.audioFiles.push(response.data)
+        })
+    }
+  }
+}
+</script>
