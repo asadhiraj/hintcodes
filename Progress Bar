@@ -1,0 +1,166 @@
+<template>
+  <v-data-table
+    :headers="headers"
+    :items="audioFiles"
+    hide-default-footer
+  >
+    <template v-slot:body="{ items }">
+      <tbody>
+        <template v-for="(item, index) in items">
+          <!-- Main Table Row -->
+          <tr :key="index">
+            <td>{{ item.file_name }}</td>
+            <td>
+              <v-tooltip top>
+                <template v-slot:activator="{ on, attrs }">
+                  <v-btn 
+                    v-bind="attrs"
+                    v-on="on"
+                    @click="toggleAudio(item)"
+                    icon
+                    :color="audioStates[item.file_url]?.isPlaying ? 'red' : 'primary'"
+                  >
+                    <v-icon>{{ audioStates[item.file_url]?.isPlaying ? 'mdi-stop' : 'mdi-play' }}</v-icon>
+                  </v-btn>
+                </template>
+                <span>{{ audioStates[item.file_url]?.isPlaying ? 'Stop' : 'Play' }}</span>
+              </v-tooltip>
+            </td>
+          </tr>
+
+          <!-- Progress Bar Row -->
+          <tr v-if="audioStates[item.file_url]" :key="'progress-' + index">
+            <td colspan="2">
+              <div 
+                @click="handleSeek($event, item.file_url)"
+                style="position: relative; cursor: pointer;"
+              >
+                <v-progress-linear
+                  :value="progressPercentage(item.file_url)"
+                  height="25"
+                  color="primary"
+                  class="mx-4"
+                >
+                  <span class="text-caption white--text">
+                    {{ formatTime(audioStates[item.file_url]?.currentTime) }} / 
+                    {{ formatTime(audioStates[item.file_url]?.duration) }}
+                  </span>
+                </v-progress-linear>
+              </div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </template>
+  </v-data-table>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      headers: [
+        { text: 'File Name', value: 'file_name' },
+        { text: 'Actions', value: 'actions', sortable: false },
+      ],
+      audioFiles: [
+        { file_name: 'Song 1', file_url: '/audio/sample1.mp3' },
+        { file_name: 'Song 2', file_url: '/audio/sample2.mp3' }
+      ],
+      audioStates: {},
+      currentAudio: null
+    }
+  },
+
+  methods: {
+    toggleAudio(item) {
+      if (this.currentAudio && this.currentAudio.url !== item.file_url) {
+        this.stopCurrentAudio();
+      }
+
+      if (this.audioStates[item.file_url]?.isPlaying) {
+        this.pauseAudio(item.file_url);
+      } else {
+        this.playAudio(item.file_url);
+      }
+    },
+
+    playAudio(url) {
+      if (!this.audioStates[url]) {
+        this.$set(this.audioStates, url, {
+          isPlaying: true,
+          currentTime: 0,
+          duration: 0
+        });
+      } else {
+        this.audioStates[url].isPlaying = true;
+      }
+
+      const audio = new Audio(url);
+      audio.currentTime = this.audioStates[url].currentTime;
+      
+      audio.addEventListener('timeupdate', () => {
+        this.audioStates[url].currentTime = audio.currentTime;
+      });
+
+      audio.addEventListener('loadedmetadata', () => {
+        this.audioStates[url].duration = audio.duration;
+      });
+
+      audio.addEventListener('ended', () => {
+        this.pauseAudio(url);
+      });
+
+      audio.play();
+      this.currentAudio = { audio, url };
+    },
+
+    pauseAudio(url) {
+      if (this.currentAudio) {
+        this.currentAudio.audio.pause();
+        this.audioStates[url].isPlaying = false;
+      }
+    },
+
+    stopCurrentAudio() {
+      if (this.currentAudio) {
+        const url = this.currentAudio.url;
+        this.currentAudio.audio.pause();
+        this.audioStates[url].isPlaying = false;
+        this.currentAudio = null;
+      }
+    },
+
+    handleSeek(event, url) {
+      const progressBar = event.currentTarget;
+      const rect = progressBar.getBoundingClientRect();
+      const clickPosition = (event.clientX - rect.left) / rect.width;
+      const newTime = this.audioStates[url].duration * clickPosition;
+
+      this.audioStates[url].currentTime = newTime;
+      
+      if (this.currentAudio && this.currentAudio.url === url) {
+        this.currentAudio.audio.currentTime = newTime;
+      }
+    },
+
+    progressPercentage(url) {
+      const state = this.audioStates[url] || {};
+      return ((state.currentTime / state.duration) * 100) || 0;
+    },
+
+    formatTime(seconds) {
+      if (!seconds) return '0:00';
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = Math.floor(seconds % 60);
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+  },
+
+  beforeDestroy() {
+    if (this.currentAudio) {
+      this.currentAudio.audio.pause();
+    }
+  }
+}
+</script>
