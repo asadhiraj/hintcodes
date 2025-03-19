@@ -1,0 +1,84 @@
+<template>
+  <v-dialog v-model="dialog" max-width="600px">
+    <v-card>
+      <v-card-title>
+        <span class="headline">Audio Recorder</span>
+      </v-card-title>
+      <v-card-text>
+        <div>
+          <v-btn @click="startRecording" :disabled="isRecording">Start</v-btn>
+          <v-btn @click="pauseRecording" :disabled="!isRecording || isPaused">Pause</v-btn>
+          <v-btn @click="resumeRecording" :disabled="!isRecording || !isPaused">Resume</v-btn>
+          <v-btn @click="stopRecording" :disabled="!isRecording">Stop</v-btn>
+          <v-btn @click="downloadRecording" :disabled="!recordingAvailable">Download</v-btn>
+          <v-btn @click="uploadRecording" :disabled="!recordingAvailable">Upload</v-btn>
+        </div>
+        <audio ref="audio" controls></audio>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="green darken-1" text @click="dialog = false">Close</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+</template>
+
+<script>
+import RecordRTC from 'recordrtc';
+
+export default {
+  data() {
+    return {
+      dialog: false,
+      isRecording: false,
+      isPaused: false,
+      recorder: null,
+      blob: null,
+      recordingAvailable: false,
+    };
+  },
+  methods: {
+    startRecording() {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        this.recorder = RecordRTC(stream, { type: 'audio' });
+        this.recorder.startRecording();
+        this.isRecording = true;
+        this.recordingAvailable = false;
+      });
+    },
+    pauseRecording() {
+      this.recorder.pauseRecording();
+      this.isPaused = true;
+    },
+    resumeRecording() {
+      this.recorder.resumeRecording();
+      this.isPaused = false;
+    },
+    stopRecording() {
+      this.recorder.stopRecording(() => {
+        this.blob = this.recorder.getBlob();
+        const audioURL = URL.createObjectURL(this.blob);
+        this.$refs.audio.src = audioURL;
+        this.isRecording = false;
+        this.isPaused = false;
+        this.recordingAvailable = true;
+      });
+    },
+    downloadRecording() {
+      RecordRTC.invokeSaveAsDialog(this.blob);
+    },
+    uploadRecording() {
+      // Implement your upload logic here
+      console.log('Upload recording', this.blob);
+    },
+  },
+};
+</script>
+
+<style scoped>
+.v-card-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+</style>
